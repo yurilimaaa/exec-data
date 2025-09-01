@@ -1,0 +1,22 @@
+{
+  "timeZone": "UTC",
+  "dependencies": {
+    "enabledAdvancedServices": [
+      {
+        "userSymbol": "AnalyticsData",
+        "serviceId": "analyticsdata",
+        "version": "v1beta"
+      },
+      {
+        "userSymbol": "AnalyticsAdmin",
+        "version": "v1beta",
+        "serviceId": "analyticsadmin"
+      }
+    ]
+  },
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/analytics.readonly",
+    "https://www.googleapis.com/auth/drive.readonly"
+  ]
+}
