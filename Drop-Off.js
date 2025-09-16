@@ -73,14 +73,14 @@ function updateDevicePlatformPerformanceWeekly() {
   var sh = ss.getSheetByName(TAB_NAME) || ss.insertSheet(TAB_NAME);
 
   // ---------- Header (2 rows, grouped bands) ----------
-  var header1 = ['Week (UTC)', 'Device',
-    'Desktop', '',
-    'iOS - Mobweb', '',
-    'iOS - App', '',
-    'Android - Mobweb', '',
-    'Android - App', ''
+  var header1 = [
+    'Week (UTC)', 'Stage',
+    'Desktop %', 'iOS Mobweb %', 'iOS App %', 'Android Mobweb %', 'Android App %',
+    'Desktop', '', 'iOS - Mobweb', '', 'iOS - App', '', 'Android - Mobweb', '', 'Android - App', ''
   ];
-  var header2 = ['', 'Stage',
+  var header2 = [
+    '', '',
+    '','', '', '', '',
     'Users','Drop-off',
     'Users','Drop-off',
     'Users','Drop-off',
@@ -92,25 +92,25 @@ function updateDevicePlatformPerformanceWeekly() {
     sh.getRange(1,1,1,header1.length).setValues([header1]).setFontWeight('bold');
     sh.getRange(2,1,1,header2.length).setValues([header2]).setFontWeight('bold');
 
-    // Merge device group headers
-    sh.getRange(1,3,1,2).merge();   // Desktop
-    sh.getRange(1,5,1,2).merge();   // iOS - Mobweb
-    sh.getRange(1,7,1,2).merge();   // iOS - App
-    sh.getRange(1,9,1,2).merge();   // Android - Mobweb
-    sh.getRange(1,11,1,2).merge();  // Android - App
+    // Merge device group headers (users/drop-off bands)
+    sh.getRange(1,8,1,2).merge();   // Desktop
+    sh.getRange(1,10,1,2).merge();  // iOS - Mobweb
+    sh.getRange(1,12,1,2).merge();  // iOS - App
+    sh.getRange(1,14,1,2).merge();  // Android - Mobweb
+    sh.getRange(1,16,1,2).merge();  // Android - App
 
-    // Band colors (no resizing)
+    // Band colors (users/drop-off bands)
     var desktopColor = '#e8e0f5'; // desktop
     var iosWebColor  = '#f9efc3'; // iOS web
     var iosAppColor  = '#f6e69c'; // iOS app
     var andWebColor  = '#c6def0'; // Android web
     var andAppColor  = '#b9d7ee'; // Android app
 
-    sh.getRange(1,3,2,2).setBackground(desktopColor);
-    sh.getRange(1,5,2,2).setBackground(iosWebColor);
-    sh.getRange(1,7,2,2).setBackground(iosAppColor);
-    sh.getRange(1,9,2,2).setBackground(andWebColor);
-    sh.getRange(1,11,2,2).setBackground(andAppColor);
+    sh.getRange(1,8,2,2).setBackground(desktopColor);
+    sh.getRange(1,10,2,2).setBackground(iosWebColor);
+    sh.getRange(1,12,2,2).setBackground(iosAppColor);
+    sh.getRange(1,14,2,2).setBackground(andWebColor);
+    sh.getRange(1,16,2,2).setBackground(andAppColor);
   }
 
   // ---------- Pull data: totalUsers for each stage × segment (current week only) ----------
@@ -140,6 +140,21 @@ function updateDevicePlatformPerformanceWeekly() {
     var stage = STAGES[s2];
     var row = [weekLabel, stage.label];
 
+    // Compute total users for this stage across all 5 segments
+    var usersPerDevice = [];
+    for (var g2 = 0; g2 < SEGMENTS.length; g2++) {
+      var seg2 = SEGMENTS[g2];
+      var series = countsBySeg[seg2.key];
+      usersPerDevice.push(series[s2] || 0);
+    }
+    var totalUsers = usersPerDevice.reduce(function(a,b){return a+b;}, 0);
+
+    // Compute device % (as decimals, e.g. 0.1234)
+    for (var i = 0; i < usersPerDevice.length; i++) {
+      var pct = (totalUsers > 0) ? usersPerDevice[i] / totalUsers : 0;
+      row.push(pct);
+    }
+
     // For each segment, compute users + drop-off vs previous stage in same flow
     for (var g2 = 0; g2 < SEGMENTS.length; g2++) {
       var seg2 = SEGMENTS[g2];
@@ -151,7 +166,6 @@ function updateDevicePlatformPerformanceWeekly() {
       if (s2 === 2) drop = dropPct(series[2], series[1]);
       if (s2 === 4) drop = dropPct(series[4], series[3]);
       if (s2 === 5) drop = dropPct(series[5], series[4]);
-
       row.push(users, drop);
     }
 
@@ -160,9 +174,183 @@ function updateDevicePlatformPerformanceWeekly() {
 
   // ---------- Append rows ----------
   var startRow = sh.getLastRow() + 1;
-  sh.getRange(startRow, 1, outRows.length, 12).setValues(outRows);
+  sh.getRange(startRow, 1, outRows.length, 17).setValues(outRows);
 
   Logger.log('Device & Platform Pivot (Drop-off) appended for ' + weekLabel + ' (' + outRows.length + ' rows)');
+}
+
+/**
+ * Backfill Device & Platform Performance for a range of weeks.
+ * @param {string} startDateStr - Start date in 'yyyy-mm-dd'
+ * @param {string} endDateStr - End date in 'yyyy-mm-dd'
+ */
+function backfillDevicePlatformPerformance(startDateStr, endDateStr) {
+  var PROPERTY_ID     = '418611571';
+  var SPREADSHEET_ID  = '1VxsGju5iO2WUInUJiy8zyUfdQ5ZyObN3NirxcAvQs94';
+  var TAB_NAME        = 'Device & Platform Performance';
+  var propertyName = 'properties/' + PROPERTY_ID;
+
+  // Week-aligned: find first Sunday on/after startDate, then each Sunday–Saturday window until endDate
+  function toUTCDate(str) {
+    var p = str.split('-');
+    return new Date(Date.UTC(Number(p[0]), Number(p[1])-1, Number(p[2])));
+  }
+  var startDate = toUTCDate(startDateStr);
+  var endDate = toUTCDate(endDateStr);
+
+  // Find first Sunday on/after startDate
+  var currStart = new Date(startDate);
+  var day = currStart.getUTCDay();
+  if (day !== 0) { // not Sunday
+    currStart.setUTCDate(currStart.getUTCDate() + (7 - day));
+  }
+
+  // The header, segments, stages, etc, match updateDevicePlatformPerformanceWeekly
+  var SEGMENTS = [
+    { key: 'desktop-web',   label: 'Desktop' },
+    { key: 'ios-web',       label: 'iOS - Mobweb' },
+    { key: 'ios-app',       label: 'iOS - App' },
+    { key: 'android-web',   label: 'Android - Mobweb' },
+    { key: 'android-app',   label: 'Android - App' }
+  ];
+  var STAGES = [
+    { label: 'Send Inquiry Trip Cart', event: 'trip-cart_price-calculated', p2: 'false' },
+    { label: 'Inquiry Start',          event: 'inquiry_start' },
+    { label: 'Inquiry Submitted',      event: 'inquiry_submit_success' },
+    { label: 'Book Now Trip Cart',     event: 'trip-cart_price-calculated', p2: 'true' },
+    { label: 'Book Now Clicks',        event: 'trip-cart_book-now-click' },
+    { label: 'Proceed to Payment',     event: 'trip-cart_book-now-proceed-to-payment-cl' }
+  ];
+
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sh = ss.getSheetByName(TAB_NAME) || ss.insertSheet(TAB_NAME);
+
+  // Ensure header
+  var header1 = [
+    'Week (UTC)', 'Stage',
+    'Desktop %', 'iOS Mobweb %', 'iOS App %', 'Android Mobweb %', 'Android App %',
+    'Desktop', '', 'iOS - Mobweb', '', 'iOS - App', '', 'Android - Mobweb', '', 'Android - App', ''
+  ];
+  var header2 = [
+    '', '',
+    '','', '', '', '',
+    'Users','Drop-off',
+    'Users','Drop-off',
+    'Users','Drop-off',
+    'Users','Drop-off',
+    'Users','Drop-off'
+  ];
+  if (sh.getLastRow() < 2 || sh.getRange(1,1,1,header1.length).getValues()[0].join('') === '') {
+    sh.getRange(1,1,1,header1.length).setValues([header1]).setFontWeight('bold');
+    sh.getRange(2,1,1,header2.length).setValues([header2]).setFontWeight('bold');
+    // Merge device group headers (users/drop-off bands)
+    sh.getRange(1,8,1,2).merge();   // Desktop
+    sh.getRange(1,10,1,2).merge();  // iOS - Mobweb
+    sh.getRange(1,12,1,2).merge();  // iOS - App
+    sh.getRange(1,14,1,2).merge();  // Android - Mobweb
+    sh.getRange(1,16,1,2).merge();  // Android - App
+    // Band colors
+    var desktopColor = '#e8e0f5'; // desktop
+    var iosWebColor  = '#f9efc3'; // iOS web
+    var iosAppColor  = '#f6e69c'; // iOS app
+    var andWebColor  = '#c6def0'; // Android web
+    var andAppColor  = '#b9d7ee'; // Android app
+    sh.getRange(1,8,2,2).setBackground(desktopColor);
+    sh.getRange(1,10,2,2).setBackground(iosWebColor);
+    sh.getRange(1,12,2,2).setBackground(iosAppColor);
+    sh.getRange(1,14,2,2).setBackground(andWebColor);
+    sh.getRange(1,16,2,2).setBackground(andAppColor);
+  }
+
+  // Read existing rows to check for weekLabel existence
+  var data = sh.getDataRange().getValues();
+  var weekStageToRowIdx = {};
+  for (var i = 2; i < data.length; i++) {
+    var row = data[i];
+    var week = row[0];
+    var stage = row[1];
+    if (week && stage) {
+      weekStageToRowIdx[week + '|' + stage] = i + 1; // 1-based row index for setValues
+    }
+  }
+
+  // Helper for drop-off %
+  function dropPct(curr, prev) {
+    curr = Number(curr || 0); prev = Number(prev || 0);
+    if (!prev) return '—';
+    var r = (prev - curr) / prev;
+    if (r < 0) r = 0;
+    return (r * 100).toFixed(1) + '%';
+  }
+
+  // Loop through each week
+  while (currStart <= endDate) {
+    var weekStart = new Date(currStart);
+    var weekEnd = new Date(currStart); weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
+    if (weekEnd > endDate) weekEnd = new Date(endDate); // Clamp last week to endDate
+    var weekLabel = DP_formatDMY_(DP_ymd_(weekStart)) + ' / ' + DP_formatDMY_(DP_ymd_(weekEnd));
+
+    // Pre-read counts per segment for this week
+    var countsBySeg = {};
+    for (var g = 0; g < SEGMENTS.length; g++) {
+      var seg = SEGMENTS[g];
+      countsBySeg[seg.key] = [];
+      for (var s = 0; s < STAGES.length; s++) {
+        var st = STAGES[s];
+        var val = DP_readUsersForEventBySegment_(propertyName, DP_ymd_(weekStart), DP_ymd_(weekEnd), st.event, st.p2, seg.key);
+        countsBySeg[seg.key].push(Number(val || 0));
+      }
+    }
+
+    // Prepare rows for this week
+    var weekRows = [];
+    for (var s2 = 0; s2 < STAGES.length; s2++) {
+      var stage = STAGES[s2];
+      var row = [weekLabel, stage.label];
+      var usersPerDevice = [];
+      for (var g2 = 0; g2 < SEGMENTS.length; g2++) {
+        var seg2 = SEGMENTS[g2];
+        var series = countsBySeg[seg2.key];
+        usersPerDevice.push(series[s2] || 0);
+      }
+      var totalUsers = usersPerDevice.reduce(function(a,b){return a+b;}, 0);
+      for (var i2 = 0; i2 < usersPerDevice.length; i2++) {
+        var pct = (totalUsers > 0) ? usersPerDevice[i2] / totalUsers : 0;
+        row.push(pct);
+      }
+      for (var g2 = 0; g2 < SEGMENTS.length; g2++) {
+        var seg2 = SEGMENTS[g2];
+        var series = countsBySeg[seg2.key];
+        var users = series[s2] || 0;
+        var drop = '—';
+        if (s2 === 1) drop = dropPct(series[1], series[0]);
+        if (s2 === 2) drop = dropPct(series[2], series[1]);
+        if (s2 === 4) drop = dropPct(series[4], series[3]);
+        if (s2 === 5) drop = dropPct(series[5], series[4]);
+        row.push(users, drop);
+      }
+      weekRows.push(row);
+    }
+
+    // Write/update rows in sheet
+    for (var r = 0; r < weekRows.length; r++) {
+      var row = weekRows[r];
+      var key = row[0] + '|' + row[1];
+      if (weekStageToRowIdx[key]) {
+        // Update existing row
+        sh.getRange(weekStageToRowIdx[key], 1, 1, row.length).setValues([row]);
+      } else {
+        // Append new row
+        sh.appendRow(row);
+        // Update mapping for future checks in this run
+        weekStageToRowIdx[key] = sh.getLastRow();
+      }
+    }
+    Logger.log('Backfilled Device & Platform Pivot for week: ' + weekLabel + ' (' + weekRows.length + ' rows)');
+    // Advance to next week
+    currStart.setUTCDate(currStart.getUTCDate() + 7);
+  }
+}
 }
 
 /************ GA4 metadata helpers (cache) ************/

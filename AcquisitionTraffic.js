@@ -1,7 +1,3 @@
-/* 
-test change 
-upload change on feature-branch on git 
-*/
 function updateAcqTrafficChannelsWoWYoY() {
   var PROPERTY_ID = '418611571'; // GA4 property
   var SPREADSHEET_ID = '1VxsGju5iO2WUInUJiy8zyUfdQ5ZyObN3NirxcAvQs94';
