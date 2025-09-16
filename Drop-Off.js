@@ -190,13 +190,32 @@ function backfillDevicePlatformPerformance(startDateStr, endDateStr) {
   var TAB_NAME        = 'Device & Platform Performance';
   var propertyName = 'properties/' + PROPERTY_ID;
 
-  // Week-aligned: find first Sunday on/after startDate, then each Sunday–Saturday window until endDate
+  // Helper: Week-aligned: find first Sunday on/after startDate, then each Sunday–Saturday window until endDate
   function toUTCDate(str) {
+    if (typeof str === "undefined" || str === null) {
+      throw new Error("toUTCDate: date string is undefined. Argument required in format 'YYYY-MM-DD'.");
+    }
     var p = str.split('-');
     return new Date(Date.UTC(Number(p[0]), Number(p[1])-1, Number(p[2])));
   }
-  var startDate = toUTCDate(startDateStr);
-  var endDate = toUTCDate(endDateStr);
+
+  // Handle missing arguments: default to 2025-08-17 as startDate, yesterday as endDate
+  var defaultStart = "2025-08-17";
+  var defaultEnd = (function() {
+    var now = new Date();
+    now.setUTCDate(now.getUTCDate() - 1);
+    var y = now.getUTCFullYear();
+    var m = ('0' + (now.getUTCMonth() + 1)).slice(-2);
+    var d = ('0' + now.getUTCDate()).slice(-2);
+    return y + '-' + m + '-' + d;
+  })();
+  var actualStartDateStr = startDateStr || defaultStart;
+  var actualEndDateStr = endDateStr || defaultEnd;
+  if (DP_DEBUG) {
+    Logger.log('[Backfill] Using date range: ' + actualStartDateStr + ' to ' + actualEndDateStr);
+  }
+  var startDate = toUTCDate(actualStartDateStr);
+  var endDate = toUTCDate(actualEndDateStr);
 
   // Find first Sunday on/after startDate
   var currStart = new Date(startDate);
@@ -350,7 +369,6 @@ function backfillDevicePlatformPerformance(startDateStr, endDateStr) {
     // Advance to next week
     currStart.setUTCDate(currStart.getUTCDate() + 7);
   }
-}
 }
 
 /************ GA4 metadata helpers (cache) ************/
